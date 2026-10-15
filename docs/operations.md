@@ -8,7 +8,10 @@
 
 ## 升级镜像
 
-生产 compose 与 Kubernetes 都用 GHCR 的 `latest`。`latest` 会随每次发布移动：
+生产 compose 与 Kubernetes 都用 GHCR 的 `latest`。两个镜像的版本线是独立的，升级时要分别看：
+
+- `tinyproxy-exporter:latest` 随本仓库的每次发布移动（手动打的 `v*` tag）。
+- `tinyproxy:latest` 随**上游 tinyproxy 版本**移动，也就是基础镜像的 Alpine 仓库里的包版本。上游升版本时（比如 `1.11.2-r0` 到 `1.11.3-r0`），需要重新触发一次 release workflow 才会同步。
 
 ```bash
 # 生产 compose
@@ -17,3 +20,11 @@ docker compose pull && docker compose up -d
 # Kubernetes（Deployment 里已是 imagePullPolicy: Always）
 kubectl rollout restart deployment/tinyproxy -n tinyproxy
 ```
+
+想知道某个 `tinyproxy` 镜像里装的是哪个上游版本（tag 与内容已由构建强制一致，这里只是核对）：
+
+```bash
+docker run --rm ghcr.io/<owner>/tinyproxy:latest cat /etc/tinyproxy/VERSION
+```
+
+要固定版本而不是跟 `latest`，生产上直接写 tag 即可：exporter 用本仓库的 tag（如 `:1.0.0`），tinyproxy 用上游版本（如 `:1.11.2`）。

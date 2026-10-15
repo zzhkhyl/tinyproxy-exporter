@@ -16,6 +16,9 @@
 
 ### 变更
 
+- 两个镜像的版本线解耦：`tinyproxy` 镜像的 tag 跟随上游 tinyproxy 版本（构建前从基础镜像解析，并校验镜像内实际装到的版本一致），`tinyproxy-exporter` 镜像的 tag 跟随手动打的 git tag
+- `tinyproxy/Dockerfile` 新增 `TINYPROXY_VERSION` 构建参数与 `/etc/tinyproxy/VERSION`，用于写入版本标签并校验镜像内容
+- 新增 `make upstream-version`，用于查看基础镜像里 tinyproxy 的上游版本
 - 生产镜像来源统一为 `ghcr.io/<owner>/tinyproxy:latest` 与 `ghcr.io/<owner>/tinyproxy-exporter:latest`
 - 文档从 README 拆分到 `docs/`，README 只保留总览与索引
 - Go module 路径改为 `github.com/zzhkhyl/tinyproxy-exporter`

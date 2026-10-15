@@ -308,29 +308,38 @@ make images-offline    # 用 exporter/Dockerfile.slim 打包（只需 alpine 基
 
 ## 发布镜像到 GHCR
 
-推送一个 `v*` tag 就会触发 [`.github/workflows/release.yml`](.github/workflows/release.yml)，自动构建两个镜像并推送到 GitHub Container Registry：
+推送一个 `v*` tag 就会触发 [`.github/workflows/release.yml`](.github/workflows/release.yml)，构建两个镜像并推送到 GitHub Container Registry：
 
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
+**两个镜像的版本是各自独立的**，别把它们当成一套版本号：
+
+| 镜像 | tag 来源 | 产物示例 |
+| --- | --- | --- |
+| `tinyproxy-exporter` | 你手动打的 git tag | `:1.0.0`、`:1.0`、`:1`、`:latest` |
+| `tinyproxy` | 基础镜像（Alpine 仓库）里的**上游 tinyproxy 版本** | `:1.11.2`、`:1.11`、`:1`、`:latest` |
+
+tinyproxy 镜像是 `apk add tinyproxy` 装出来的，它装到哪个版本由基础镜像的仓库决定，和本仓库的 tag 没有对应关系，所以 tag 跟随上游。workflow 会在构建前起一个基础镜像把版本问出来，作为 `TINYPROXY_VERSION` 传给 `tinyproxy/Dockerfile`：它既用于打 tag，也用于校验——镜像里实际装到的版本与 tag 不符时直接让构建失败，宁可发不出去，也不发一个标错版本的镜像。
+
+本地想知道当前上游版本（就是该给 tinyproxy 镜像打的 tag）：
+
+```bash
+make upstream-version     # 形如 tinyproxy-1.11.2-r0，其中 1.11.2 就是该打的 tag
+```
+
 **不需要配置任何 Secret**：workflow 用仓库内置的 `GITHUB_TOKEN` 登录 GHCR，命名空间就是仓库 owner。只有当构建主机访问不了 Alpine CDN 时，才需要在 **Settings → Variables → Actions** 里加一个可选的 `APK_MIRROR`。
-
-产物（以 `v1.2.3`、owner 为 `<owner>` 为例）：
-
-```
-ghcr.io/<owner>/tinyproxy:1.2.3, :1.2, :1, :latest
-ghcr.io/<owner>/tinyproxy-exporter:1.2.3, :1.2, :1, :latest
-```
 
 架构为 `linux/amd64` + `linux/arm64`（只想要 amd64，就删掉 workflow 里的 `setup-qemu-action` 步骤与 `platforms` 行）。
 
 注意事项：
 
 - **首次发布后**到仓库的 **Packages** 页面，把 `tinyproxy` 与 `tinyproxy-exporter` 两个包的可见性改成 **Public**，否则匿名拉取（以及 K8s 节点拉取）会失败。
-- tag 必须以 `v` 开头且是合法 semver（如 `v1.2.3`），否则不会触发，或无法派生出 `1.2` / `1`。
-- 预发布 tag（如 `v1.2.3-rc.1`）不会覆盖 `latest`。
+- tag 必须以 `v` 开头且是合法 semver（如 `v1.0.0`），否则不会触发，或无法派生出 `1.0` / `1`。这条只约束 exporter 镜像：只推 tag 之外的分支不会重新发布 exporter。
+- 预发布 tag（如 `v1.0.0-rc.1`）不会覆盖 exporter 的 `latest`；tinyproxy 的 `latest` 与 tag 无关，始终指向上游最新版本。
+- 想在不发新版本的情况下把 tinyproxy 镜像同步到上游最新（例如 Alpine 把包从 `1.11.1-r1` 升到了 `1.11.2-r0`），在 Actions 页面手动触发该 workflow 并选择 `main` 即可，此时 exporter 会被跳过。
 
 ---
 

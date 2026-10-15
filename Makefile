@@ -12,6 +12,12 @@ REVISION    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 TARGET_OS   ?= linux
 TARGET_ARCH ?= amd64
 
+# tinyproxy 镜像的版本跟随上游（基础镜像的 Alpine 仓库里的包版本），与 VERSION
+# 无关。留空则不写入版本标签、也不做一致性校验；要复现发布镜像就填 `make
+# upstream-version` 的输出，例如 TINYPROXY_VERSION=1.11.2。
+TINYPROXY_VERSION ?=
+ALPINE_IMAGE := $(shell sed -n 's/^FROM[[:space:]]\{1,\}\(alpine:[^[:space:]]*\).*/\1/p' tinyproxy/Dockerfile | head -n1)
+
 # Build time network overrides. Set these when dl-cdn.alpinelinux.org or
 # proxy.golang.org are unreachable from the build host, for example:
 #   make images APK_MIRROR=https://mirrors.aliyun.com/alpine \
@@ -24,7 +30,7 @@ GOPROXY     ?= https://proxy.golang.org,direct
 .PHONY: help
 help: ## Show this help.
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: fmt
 fmt: ## Format the Go sources.
@@ -53,9 +59,14 @@ binary-linux: ## Cross compile the static binary used by Dockerfile.slim.
 run: ## Run the exporter locally (expects TINYPROXY_* environment variables).
 	cd $(MODULE_DIR) && $(GO) run .
 
+.PHONY: upstream-version
+upstream-version: ## Print the current upstream tinyproxy version (the tag tinyproxy images get).
+	docker run --rm $(ALPINE_IMAGE) sh -c 'apk add --no-cache -q tinyproxy >/dev/null && apk list --installed tinyproxy'
+
 .PHONY: images
 images: ## Build both images with the standard multi stage Dockerfiles.
 	docker build --build-arg APK_MIRROR=$(APK_MIRROR) \
+		--build-arg TINYPROXY_VERSION=$(TINYPROXY_VERSION) \
 		-t tinyproxy:$(IMAGE_TAG) ./tinyproxy
 	docker build --build-arg APK_MIRROR=$(APK_MIRROR) --build-arg GOPROXY=$(GOPROXY) \
 		--build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION) \
