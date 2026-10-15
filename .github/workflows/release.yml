@@ -130,7 +130,7 @@ jobs:
             org.opencontainers.image.version=${{ github.ref_name }}
             org.opencontainers.image.revision=${{ github.sha }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: ./exporter
           platforms: linux/amd64,linux/arm64
@@ -180,7 +180,7 @@ jobs:
             org.opencontainers.image.version=${{ needs.upstream.outputs.tinyproxy }}
             org.opencontainers.image.revision=${{ github.sha }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: ./tinyproxy
           platforms: linux/amd64,linux/arm64
