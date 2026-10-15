@@ -1,0 +1,128 @@
+# 生产部署：使用 GHCR（GitHub Container Registry）上发布的 latest 镜像，不在本机构建。
+#
+#   docker compose up -d                            # 启动
+#   docker compose pull && docker compose up -d     # 升级到新的 latest
+#   docker compose logs -f tinyproxy-exporter
+#
+# 开发测试请改用 docker-compose.dev.yml，两者的差异见文件末尾与 README
+# 「开发测试与生产部署」一节。两套配置的项目名、网络、卷都不同，可各自独立运行。
+#
+# 两个容器共用一个日志卷：exporter 必须读 tinyproxy 的日志文件，因此不能拆成两个 Pod
+# 式的独立部署。exporter 还会通过 compose 网络向代理请求 StatHost 统计页。
+
+name: tinyproxy
+
+services:
+  tinyproxy:
+    image: ghcr.io/zzhkhyl/tinyproxy:latest
+    # latest 会随每次发布移动，所以每次都重新拉取，避免一直用本地缓存的旧镜像。
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      # 默认只绑定 127.0.0.1：一个代理不应默认暴露到公网。要给局域网或其它主机
+      # 使用时设 TINYPROXY_BIND=0.0.0.0，并同时收紧 tinyproxy.conf 里的 Allow。
+      - "${TINYPROXY_BIND:-127.0.0.1}:${TINYPROXY_PORT:-8888}:8888"
+    environment:
+      # 由 entrypoint.sh 用于准备共享日志卷。
+      TINYPROXY_LOG_DIR: /var/log/tinyproxy
+      TINYPROXY_LOG_FILE: /var/log/tinyproxy/tinyproxy.log
+      TINYPROXY_RUN_USER: tinyproxy
+      TINYPROXY_RUN_GROUP: tinyproxy
+    volumes:
+      # 命名卷：日志随 compose 项目持久化，容器重建不丢。
+      - tinyproxy-logs:/var/log/tinyproxy
+      # 用外部文件覆盖镜像内的默认配置。那份默认配置是 Allow 0.0.0.0/0，生产务必
+      # 先收紧再上：把 TINYPROXY_CONF 指向自己的配置，或直接编辑下面这个文件。
+      - ${TINYPROXY_CONF:-./tinyproxy/tinyproxy.conf}:/etc/tinyproxy/tinyproxy.conf:ro
+      # 过滤规则（白名单），见 docs/filter.md。
+      - ${TINYPROXY_FILTER:-./tinyproxy/filter}:/etc/tinyproxy/filter:ro
+    healthcheck:
+      # 同时验证进程存活与 StatHost 统计页可用，后者正是 exporter 依赖的通道。
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS --max-time 3 -x "http://127.0.0.1:8888"
+          "http://tinyproxy.stats/" -o /dev/null || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 128m
+    cpus: 0.50
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - tinyproxy
+
+  tinyproxy-exporter:
+    image: ghcr.io/zzhkhyl/tinyproxy-exporter:latest
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      # 同样只绑回环：供本机或同宿主机的 Prometheus 抓取，不暴露到外网。
+      - "${EXPORTER_BIND:-127.0.0.1}:${EXPORTER_PORT:-9119}:9119"
+    environment:
+      EXPORTER_LISTEN_ADDRESS: ":9119"
+      EXPORTER_METRICS_PATH: "/metrics"
+      # 生产用 info；排查问题时再临时调成 debug。
+      LOG_LEVEL: "info"
+
+      # 统计页通道。
+      TINYPROXY_STATS_ENABLED: "true"
+      TINYPROXY_PROXY_URL: "http://tinyproxy:8888"
+      TINYPROXY_STATS_HOST: "tinyproxy.stats"
+      TINYPROXY_STATS_INTERVAL: "15s"
+      TINYPROXY_STATS_TIMEOUT: "5s"
+
+      # 日志通道。
+      TINYPROXY_LOG_ENABLED: "true"
+      TINYPROXY_LOG_PATH: "/var/log/tinyproxy/tinyproxy.log"
+      TINYPROXY_LOG_POLL_INTERVAL: "1s"
+      # 只统计本次启动之后的请求，避免重启时把历史日志一次性回放成尖峰。
+      TINYPROXY_LOG_FROM_START: "false"
+      TINYPROXY_LOG_MAX_HOSTS: "500"
+    volumes:
+      # 只读：exporter 绝不能改动代理的日志文件。
+      - tinyproxy-logs:/var/log/tinyproxy:ro
+    depends_on:
+      tinyproxy:
+        # 故意不用 service_healthy：exporter 设计上允许先于代理启动，并把问题
+        # 通过 tinyproxy_up 自己报出来。
+        condition: service_started
+    mem_limit: 128m
+    cpus: 0.20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - tinyproxy
+
+volumes:
+  tinyproxy-logs:
+
+networks:
+  tinyproxy:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# 生产（本文件） vs 开发测试（docker-compose.dev.yml）
+#
+#   维度      生产                              开发测试
+#   --------  --------------------------------  ----------------------------------
+#   服务定义  image: …:latest + pull_policy      build: 本地 Dockerfile（--build）
+#             always；有资源与日志上限         restart 保留，无资源限制
+#   网络配置  端口仅绑 127.0.0.1（TINYPROXY_     端口绑 0.0.0.0，便于局域网/外部调试
+#             BIND/EXPORTER_BIND 可改）
+#   数据卷    命名卷 tinyproxy-logs（持久化）   绑定挂载 ./data/logs（宿主机可直接 tail）
+#   环境变量  LOG_LEVEL=info，LOG_FROM_START=   LOG_LEVEL=debug，LOG_FROM_START=true
+#             false（只算启动后流量）           （从头解析既有日志，方便测试分类器）
+#   项目标识  name: tinyproxy                    name: tinyproxy-dev（网络/卷不冲突）
+#
+# 两套默认都映射宿主机 8888/9119，需要同时运行时给其中一套设置不同的
+# TINYPROXY_PORT / EXPORTER_PORT。
+# ---------------------------------------------------------------------------

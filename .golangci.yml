@@ -1,0 +1,14 @@
+# golangci-lint v2 配置，供贡献者在本地做比 CI 更严格的自检：
+#
+#   cd exporter && golangci-lint run
+#
+# .github/workflows/ci.yml 只跑 gofmt / go vet / go test（不依赖 golangci-lint 的版本），
+# 所以这份配置不影响 CI 结果。启用的都是低误报的检查项，按需自行加严。
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - unused

@@ -1,0 +1,456 @@
+# tinyproxy + Prometheus exporter，单文件部署。
+#
+#   kubectl apply -f k8s/tinyproxy.yaml
+#
+# tinyproxy 与 exporter 同处一个 Pod：exporter 必须读代理的日志文件，而 emptyDir
+# 只能在同一 Pod 内共享，因此无法拆成两个 Pod。两个 Service 选择的是同一个 Pod。
+#
+# 镜像取自 GHCR（ghcr.io/<owner>/<name>:latest），由 .github/workflows/release.yml
+# 在打 tag 时发布，latest 会随每次发布移动。私有仓库或内网集群请把 image 改成可达地址
+# 并配置 imagePullSecrets；本地调试可临时换回 tinyproxy:local（先 kind load）。
+#
+# 末尾的 ServiceMonitor 与 PrometheusRule 需要 Prometheus Operator CRD
+# （kube-prometheus-stack 等）。没有 CRD 时删掉这两段即可，Prometheus 会退而
+# 使用 Pod 上的 prometheus.io/scrape 注解来发现指标。
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinyproxy
+  labels:
+    app.kubernetes.io/name: tinyproxy
+    app.kubernetes.io/part-of: tinyproxy-exporter
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tinyproxy-config
+  namespace: tinyproxy
+  labels:
+    app.kubernetes.io/name: tinyproxy
+    app.kubernetes.io/component: proxy
+data:
+  tinyproxy.conf: |
+    ## 与 ../../tinyproxy/tinyproxy.conf 保持同步。
+    ##
+    ## 以下四项是与 exporter 的契约，不能单独改动：
+    ##   StatHost  必须等于 exporter 容器的 TINYPROXY_STATS_HOST
+    ##   StatFile  必须保持为 exporter 能解析的模板
+    ##   LogFile   必须等于 exporter 容器的 TINYPROXY_LOG_PATH
+    ##   LogLevel  必须为 Info（改成 Connect 会丢掉所有 LOG_INFO 行）
+    User tinyproxy
+    Group tinyproxy
+
+    Port 8888
+    Listen 0.0.0.0
+
+    Timeout 600
+    MaxClients 100
+
+    StatHost "tinyproxy.stats"
+    StatFile "/etc/tinyproxy/statpage.txt"
+
+    LogFile "/var/log/tinyproxy/tinyproxy.log"
+    LogLevel Info
+
+    ## 只要出现任何 Allow/Deny，默认策略就变成 DENY。服务还是 ClusterIP 时
+    ## 0.0.0.0/0 可以接受，对外暴露之前务必收紧（例如只放行集群网段）。
+    Allow 0.0.0.0/0
+
+    ## 不在 Via 头里泄露 Pod 主机名。
+    ViaProxyName "tinyproxy"
+
+    ## 过滤（白名单）：只有规则文件里列出的域名能通过代理访问。
+    ## 删掉 Filter 行即完全不启用过滤。详见 docs/filter.md。
+    Filter "/etc/tinyproxy/filter"
+    FilterType fnmatch
+    FilterDefaultDeny Yes
+
+  ## 过滤规则（白名单）。与 tinyproxy/filter 保持一致。
+  filter: |
+    # 只有此处列出的域名可以通过代理访问。见 docs/filter.md。
+    *.github.com
+    *.githubusercontent.com
+    *.pypi.org
+    files.pythonhosted.org
+    *.golang.org
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinyproxy
+  namespace: tinyproxy
+  labels:
+    app.kubernetes.io/name: tinyproxy
+    app.kubernetes.io/component: proxy
+    app.kubernetes.io/part-of: tinyproxy-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tinyproxy
+      app.kubernetes.io/component: proxy
+  # 每个 Pod 独占自己的日志卷，用 Recreate 而不是滚动更新，避免两个 Pod 同时
+  # 写日志、让请求速率被短暂重复计算。
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tinyproxy
+        app.kubernetes.io/component: proxy
+        app.kubernetes.io/part-of: tinyproxy-exporter
+      annotations:
+        # 供基于注解的 Prometheus 配置发现；使用 Operator 时由 ServiceMonitor 接管。
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9119"
+        prometheus.io/path: "/metrics"
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      volumes:
+        # 两容器共享。Pod 重建即清空；需要日志留存请改用 PVC。
+        - name: logs
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: tinyproxy-config
+            items:
+              - key: tinyproxy.conf
+                path: tinyproxy.conf
+              - key: filter
+                path: filter
+        - name: tmp
+          emptyDir: {}
+      containers:
+        - name: tinyproxy
+          image: ghcr.io/zzhkhyl/tinyproxy:latest
+          # latest 会随发布移动，必须每次重新拉取，否则节点会一直用缓存的旧镜像。
+          imagePullPolicy: Always
+          ports:
+            - name: proxy
+              containerPort: 8888
+              protocol: TCP
+          env:
+            # 由 entrypoint.sh 用来准备共享日志目录。
+            - name: TINYPROXY_LOG_DIR
+              value: /var/log/tinyproxy
+            - name: TINYPROXY_LOG_FILE
+              value: /var/log/tinyproxy/tinyproxy.log
+            - name: TINYPROXY_RUN_USER
+              value: tinyproxy
+            - name: TINYPROXY_RUN_GROUP
+              value: tinyproxy
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/tinyproxy
+            - name: config
+              mountPath: /etc/tinyproxy/tinyproxy.conf
+              subPath: tinyproxy.conf
+              readOnly: true
+            - name: config
+              mountPath: /etc/tinyproxy/filter
+              subPath: filter
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          # 以 root 启动，用于绑定端口并修正共享日志属主，随后按 tinyproxy.conf 的
+          # User/Group 降权，所以 runAsUser 0 是必需的，能力也不能全部丢弃。
+          securityContext:
+            runAsUser: 0
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          # 探针同时证明进程存活、以及 exporter 依赖的统计页通道可用。
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - curl -fsS --max-time 3 -x http://127.0.0.1:8888 http://tinyproxy.stats/ -o /dev/null
+            initialDelaySeconds: 5
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - curl -fsS --max-time 3 -x http://127.0.0.1:8888 http://tinyproxy.stats/ -o /dev/null
+            initialDelaySeconds: 3
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+        - name: exporter
+          image: ghcr.io/zzhkhyl/tinyproxy-exporter:latest
+          imagePullPolicy: Always
+          ports:
+            - name: metrics
+              containerPort: 9119
+              protocol: TCP
+          env:
+            - name: EXPORTER_LISTEN_ADDRESS
+              value: ":9119"
+            - name: EXPORTER_METRICS_PATH
+              value: /metrics
+            - name: LOG_LEVEL
+              value: info
+            # 统计页通道：代理是同 Pod 邻居，localhost 就够。
+            - name: TINYPROXY_STATS_ENABLED
+              value: "true"
+            - name: TINYPROXY_PROXY_URL
+              value: http://127.0.0.1:8888
+            - name: TINYPROXY_STATS_HOST
+              value: tinyproxy.stats
+            - name: TINYPROXY_STATS_INTERVAL
+              value: 15s
+            - name: TINYPROXY_STATS_TIMEOUT
+              value: 5s
+            # 日志通道：读取共享卷。
+            - name: TINYPROXY_LOG_ENABLED
+              value: "true"
+            - name: TINYPROXY_LOG_PATH
+              value: /var/log/tinyproxy/tinyproxy.log
+            - name: TINYPROXY_LOG_POLL_INTERVAL
+              value: 1s
+            - name: TINYPROXY_LOG_FROM_START
+              value: "false"
+            - name: TINYPROXY_LOG_MAX_HOSTS
+              value: "500"
+            # 接口流量通道默认关闭：tinyproxy 本身不统计字节数。开启后测量的是本
+            # Pod 的 netns，恰好只覆盖该代理的流量。需要时取消注释（通常是 eth0）：
+            # - name: TINYPROXY_TRAFFIC_INTERFACE
+            #   value: eth0
+            # - name: TINYPROXY_TRAFFIC_INTERVAL
+            #   value: 15s
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/tinyproxy
+              readOnly: true
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 24Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          # 刻意用 /metrics 而非 /healthz：后者在 tinyproxy 不可达时返回 503，
+          # 一旦把 Pod 踢出 Endpoints，就丢掉这个告警信号本身。
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 3
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+# 代理端口。默认 ClusterIP；对外暴露请改成 NodePort/LoadBalancer，
+# 并先收紧 ConfigMap 里的 Allow。
+apiVersion: v1
+kind: Service
+metadata:
+  name: tinyproxy
+  namespace: tinyproxy
+  labels:
+    app.kubernetes.io/name: tinyproxy
+    app.kubernetes.io/component: proxy
+    app.kubernetes.io/part-of: tinyproxy-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: tinyproxy
+    app.kubernetes.io/component: proxy
+  ports:
+    - name: proxy
+      port: 8888
+      targetPort: proxy
+      protocol: TCP
+---
+# 指标端口 9119。选择器与代理 Service 相同，仍是同一个 Pod。
+apiVersion: v1
+kind: Service
+metadata:
+  name: tinyproxy-exporter
+  namespace: tinyproxy
+  labels:
+    app.kubernetes.io/name: tinyproxy-exporter
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: tinyproxy-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: tinyproxy
+    app.kubernetes.io/component: proxy
+  ports:
+    - name: metrics
+      port: 9119
+      targetPort: metrics
+      protocol: TCP
+---
+# 以下两个对象需要 Prometheus Operator CRD。若 Prometheus CR 限制了
+# serviceMonitorSelector / ruleSelector，给它们补上匹配标签（例如
+# release: kube-prometheus-stack）；Prometheus 与本对象不在同一 namespace 时，
+# 还需让 serviceMonitorNamespaceSelector 覆盖 tinyproxy。
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tinyproxy-exporter
+  namespace: tinyproxy
+  labels:
+    app.kubernetes.io/name: tinyproxy-exporter
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: tinyproxy-exporter
+spec:
+  jobLabel: app.kubernetes.io/name
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tinyproxy-exporter
+  endpoints:
+    - port: metrics
+      path: /metrics
+      scheme: http
+      interval: 30s
+      scrapeTimeout: 10s
+      # 只想保留 tinyproxy 指标、丢掉运行时指标时打开：
+      # metricRelabelings:
+      #   - sourceLabels: [__name__]
+      #     regex: "(go|process)_.*"
+      #     action: drop
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+          action: replace
+---
+# 告警阈值只是起点，请按自己的流量画像调整 for: 与 rate 窗口。
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: tinyproxy
+  namespace: tinyproxy
+  labels:
+    app.kubernetes.io/name: tinyproxy
+    app.kubernetes.io/part-of: tinyproxy-exporter
+spec:
+  groups:
+    - name: tinyproxy.availability
+      rules:
+        - alert: TinyproxyUnobservable
+          expr: tinyproxy_up == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "tinyproxy is not observable"
+            description: >-
+              Neither the StatHost statistics page nor the log file could be read
+              for 5 minutes on {{ $labels.pod }} (namespace {{ $labels.namespace }}).
+
+        - alert: TinyproxyExporterSourceDown
+          expr: tinyproxy_exporter_source_up == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Exporter data source {{ $labels.source }} is down"
+            description: >-
+              The {{ $labels.source }} channel has been failing for 10 minutes.
+              Check tinyproxy_exporter_source_scrape_failures_total and the
+              exporter logs for the reason.
+
+    - name: tinyproxy.traffic
+      rules:
+        - alert: TinyproxyHighLoadRefusals
+          expr: rate(tinyproxy_log_denied_total{reason="max_clients"}[5m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "tinyproxy is refusing connections on MaxClients"
+            description: >-
+              MaxClients (100 by default) has been reached for 10 minutes.
+              Raise MaxClients or shed load.
+
+        - alert: TinyproxyDenialSpike
+          # 两侧窗口都取 10m，3x 比值才有意义；基线取整整一天前的同一窗口，
+          # 以抵消日常流量周期。
+          expr: >-
+            sum by (reason) (rate(tinyproxy_log_denied_total[10m]))
+              > 3 * sum by (reason) (rate(tinyproxy_log_denied_total[10m] offset 1d))
+          for: 15m
+          labels:
+            severity: info
+          annotations:
+            summary: "Denials for reason {{ $labels.reason }} spiked"
+            description: >-
+              Denial rate is more than 3x the same period a day ago. A config
+              change (Allow/filter) or a client misconfiguration is likely.
+
+        - alert: TinyproxyBadRequests
+          expr: rate(tinyproxy_log_bad_requests_total[10m]) > 1
+          for: 15m
+          labels:
+            severity: info
+          annotations:
+            summary: "tinyproxy is rejecting malformed requests"
+
+    - name: tinyproxy.exporter
+      rules:
+        - alert: TinyproxyLogFormatChanged
+          expr: rate(tinyproxy_log_unrecognized_lines_total[10m]) > 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "tinyproxy log format may have changed"
+            description: >-
+              More than one unrecognised log line per second for 15 minutes. Log
+              derived metrics are probably incomplete -- extend the classifier in
+              exporter/source/log_parse.go.
+
+        - alert: TinyproxyLogParseErrors
+          expr: rate(tinyproxy_log_parse_errors_total[10m]) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "tinyproxy log lines are not parseable"
+            description: >-
+              Lines never matching the log envelope usually mean a truncated or
+              corrupted log file rather than a format change.
+
+        - alert: TinyproxyStatsPageBroken
+          expr: absent(tinyproxy_requests_total) and on() tinyproxy_up == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "StatHost statistics page yields no fields"
+            description: >-
+              tinyproxy is reachable, but no statistics page counters are being
+              exported. Check that StatHost and StatFile in the ConfigMap still
+              match TINYPROXY_STATS_HOST on the exporter container.

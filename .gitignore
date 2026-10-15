@@ -1,0 +1,20 @@
+# 本地 AI 助手配置，与上游源码参考副本（见 README 说明）。
+.codebuddy/
+tinyproxy-master/
+
+# 本地环境变量：由 .env.example 复制而来，含本机配置。
+.env
+
+# 构建与测试产物。
+exporter/bin/
+coverage.out
+*.test
+
+# 开发 compose 绑定挂载的日志目录，以及散落的日志文件。
+data/
+*.log
+
+# 编辑器与操作系统。
+.idea/
+.vscode/
+.DS_Store

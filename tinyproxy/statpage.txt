@@ -1,0 +1,20 @@
+# StatFile template served for StatHost requests (see tinyproxy.conf).
+#
+# Format contract with the exporter:
+#   "<key> <number>"      -> numeric counter/gauge
+#   "<key>_text <string>" -> informational string value
+# Comments (#) and blank lines are ignored.
+#
+# Placeholders tinyproxy substitutes here (it replaces them everywhere in this
+# file, comments included, so they are spelled out without braces below):
+#   opens, reqs, badconns, deniedconns, refusedconns,
+#   version, package, date, website
+#
+# NOTE: tinyproxy itself has no byte/traffic counters -- see README for details.
+tinyproxy_stathost_open_connections {opens}
+tinyproxy_stathost_requests_total {reqs}
+tinyproxy_stathost_bad_connections_total {badconns}
+tinyproxy_stathost_denied_connections_total {deniedconns}
+tinyproxy_stathost_refused_connections_total {refusedconns}
+tinyproxy_stathost_version_text {version}
+tinyproxy_stathost_package_text {package}

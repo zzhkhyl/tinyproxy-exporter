@@ -1,0 +1,5 @@
+# Tests are not needed to build the image.
+*_test.go
+
+# NOTE: bin/ is deliberately *not* ignored. Dockerfile.slim needs the locally
+# prebuilt binary (bin/tinyproxy-exporter-<goos>-<goarch>) inside the context.

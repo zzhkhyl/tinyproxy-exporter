@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # Go 依赖：client_golang 及其传递依赖的安全更新。
+  - package-ecosystem: gomod
+    directory: /exporter
+    schedule:
+      interval: weekly
+    groups:
+      go-deps:
+        patterns: ["*"]
+
+  # GitHub Actions：也用于抵消 action 只写 major tag（未 pin SHA）的风险。
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # 基础镜像：alpine 的小版本漂移与安全更新。
+  - package-ecosystem: docker
+    directory: /tinyproxy
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /exporter
+    schedule:
+      interval: weekly

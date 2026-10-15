@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞
+    url: https://github.com/zzhkhyl/tinyproxy-exporter/security/advisories/new
+    about: 请通过私密渠道报告，不要开公开 Issue
+  - name: 使用问题 / 讨论
+    url: https://github.com/zzhkhyl/tinyproxy-exporter/discussions
+    about: 配置、部署、指标口径之类的问答，欢迎到 Discussions

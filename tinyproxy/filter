@@ -1,0 +1,10 @@
+# tinyproxy 过滤规则（白名单）：只有此处列出的域名可以通过代理访问。
+# 规则语法与部署方式见 docs/filter.md。
+#
+# 下面只是示例，请替换成你实际需要放行的域名。
+
+*.github.com
+*.githubusercontent.com
+*.pypi.org
+files.pythonhosted.org
+*.golang.org

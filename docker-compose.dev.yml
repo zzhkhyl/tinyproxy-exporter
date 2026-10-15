@@ -1,0 +1,100 @@
+# 开发测试：在本机构建镜像、绑定挂载配置与日志，改完就能重启验证。
+#
+#   docker compose -f docker-compose.dev.yml up -d --build
+#   docker compose -f docker-compose.dev.yml logs -f
+#   tail -f data/logs/tinyproxy.log
+#   curl -s http://127.0.0.1:9119/metrics | grep '^tinyproxy'
+#   curl -s -x http://127.0.0.1:8888 http://tinyproxy.stats/
+#
+# 生产部署请用 docker-compose.yml（GHCR 的 latest 镜像）。两套的差异见该文件
+# 末尾的对照表与 README「开发测试与生产部署」。项目名、网络、卷都与生产不同，
+# 因此可以各自独立运行。
+
+name: tinyproxy-dev
+
+services:
+  tinyproxy:
+    build:
+      context: ./tinyproxy
+      args:
+        # 仅当 dl-cdn.alpinelinux.org 不可达时才需要，见 README。
+        APK_MIRROR: ${APK_MIRROR:-}
+    image: tinyproxy:local
+    restart: unless-stopped
+    ports:
+      # 开发时绑全部接口，方便从局域网或同级容器里调试。
+      - "${TINYPROXY_PORT:-8888}:8888"
+    environment:
+      # 由 entrypoint.sh 用于准备共享日志卷。
+      TINYPROXY_LOG_DIR: /var/log/tinyproxy
+      TINYPROXY_LOG_FILE: /var/log/tinyproxy/tinyproxy.log
+      TINYPROXY_RUN_USER: tinyproxy
+      TINYPROXY_RUN_GROUP: tinyproxy
+    volumes:
+      # 绑定挂载：宿主机直接读写日志，方便 tail 与排查。
+      - ./data/logs:/var/log/tinyproxy
+      # 配置也绑定挂载：改完 tinyproxy.conf 或 filter 重启容器即可生效，不必重建镜像。
+      - ./tinyproxy/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
+      - ./tinyproxy/filter:/etc/tinyproxy/filter:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS --max-time 3 -x "http://127.0.0.1:8888"
+          "http://tinyproxy.stats/" -o /dev/null || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - tinyproxy-dev
+
+  tinyproxy-exporter:
+    build:
+      context: ./exporter
+      args:
+        # 仅当 Alpine 的 CDN 或 proxy.golang.org 不可达时才需要。
+        APK_MIRROR: ${APK_MIRROR:-}
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        VERSION: ${TINYPROXY_EXPORTER_VERSION:-dev}
+        REVISION: ${TINYPROXY_EXPORTER_REVISION:-unknown}
+    image: tinyproxy-exporter:local
+    restart: unless-stopped
+    ports:
+      - "${EXPORTER_PORT:-9119}:9119"
+    environment:
+      EXPORTER_LISTEN_ADDRESS: ":9119"
+      EXPORTER_METRICS_PATH: "/metrics"
+      # 开发时开 debug，能看到每条被分类/被丢弃的日志行。
+      LOG_LEVEL: "debug"
+
+      # 统计页通道。
+      TINYPROXY_STATS_ENABLED: "true"
+      TINYPROXY_PROXY_URL: "http://tinyproxy:8888"
+      TINYPROXY_STATS_HOST: "tinyproxy.stats"
+      TINYPROXY_STATS_INTERVAL: "15s"
+      TINYPROXY_STATS_TIMEOUT: "5s"
+
+      # 日志通道。
+      TINYPROXY_LOG_ENABLED: "true"
+      TINYPROXY_LOG_PATH: "/var/log/tinyproxy/tinyproxy.log"
+      TINYPROXY_LOG_POLL_INTERVAL: "1s"
+      # 从头解析既有日志，方便验证分类器改动；生产为 false，避免回放成尖峰。
+      TINYPROXY_LOG_FROM_START: "true"
+      TINYPROXY_LOG_MAX_HOSTS: "500"
+
+      # 流量通道默认关闭（tinyproxy 不统计字节）。要让计数只覆盖代理流量，需与
+      # tinyproxy 共享网络命名空间：把本服务的 ports/networks 换成
+      #   network_mode: "service:tinyproxy"
+      # 再设置 TINYPROXY_TRAFFIC_INTERFACE=eth0。见 README「流量统计」。
+    volumes:
+      - ./data/logs:/var/log/tinyproxy:ro
+    depends_on:
+      tinyproxy:
+        condition: service_started
+    networks:
+      - tinyproxy-dev
+
+networks:
+  tinyproxy-dev:
+    driver: bridge

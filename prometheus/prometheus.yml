@@ -1,0 +1,22 @@
+# Example Prometheus configuration for the tinyproxy exporter.
+#
+# Run Prometheus on the same docker network as the exporter, or change the
+# target below:
+#   * docker compose network  -> tinyproxy-exporter:9119
+#   * host installation       -> 127.0.0.1:9119
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: tinyproxy
+
+scrape_configs:
+  - job_name: tinyproxy-exporter
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - tinyproxy-exporter:9119
+        labels:
+          instance: tinyproxy
+          service: tinyproxy

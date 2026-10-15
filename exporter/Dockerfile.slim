@@ -1,0 +1,28 @@
+# Offline fallback for environments that cannot pull the golang builder image.
+#
+# Build the static binary on the host first, then package it with the already
+# available alpine runtime image:
+#
+#   make binary-linux          # writes exporter/bin/tinyproxy-exporter-linux-amd64
+#   make docker-build-local    # docker build -f Dockerfile.slim ...
+#
+# The binary is named tinyproxy-exporter-$(GOOS)-$(GOARCH) so a multi arch build
+# context works without renaming files.
+FROM alpine:3.20
+
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+RUN apk add --no-cache ca-certificates wget \
+ && adduser -D -H -u 10001 -s /sbin/nologin exporter
+
+COPY bin/tinyproxy-exporter-${TARGETOS}-${TARGETARCH} /usr/local/bin/tinyproxy-exporter
+RUN chmod 0755 /usr/local/bin/tinyproxy-exporter
+
+USER exporter
+EXPOSE 9119
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD /bin/sh -c 'port="${EXPORTER_LISTEN_ADDRESS##*:}"; wget -q -O /dev/null "http://127.0.0.1:${port:-9119}${EXPORTER_METRICS_PATH:-/metrics}" || exit 1'
+
+ENTRYPOINT ["/usr/local/bin/tinyproxy-exporter"]

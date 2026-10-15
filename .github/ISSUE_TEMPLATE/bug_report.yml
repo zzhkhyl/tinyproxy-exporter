@@ -1,0 +1,77 @@
+name: Bug 报告
+description: 报告一个可复现的问题
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先搜索已有 Issue。**安全问题请改用 [SECURITY.md](../../SECURITY.md) 里的私密渠道**，不要开公开 Issue。
+
+  - type: input
+    id: exporter-version
+    attributes:
+      label: Exporter 版本
+      description: 取自 `tinyproxy_exporter_build_info` 的 `version` 标签，或所用镜像的 tag
+      placeholder: v0.1.0 或 latest
+    validations:
+      required: true
+
+  - type: input
+    id: tinyproxy-version
+    attributes:
+      label: tinyproxy 版本
+      description: 取自 `tinyproxy_stathost_info` 的 `version` 标签，或容器内 `tinyproxy -v`
+      placeholder: 1.11.3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: 部署方式
+      options:
+        - docker compose（生产 docker-compose.yml）
+        - docker compose（开发测试 docker-compose.dev.yml）
+        - Kubernetes（k8s/tinyproxy.yaml）
+        - 直接运行二进制
+        - 其它
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象与期望
+      description: 实际发生了什么，你期望的是什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 尽量给出能直接执行的命令
+      placeholder: |
+        1. ...
+        2. ...
+        3. 看到 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: healthz
+    attributes:
+      label: /healthz 输出
+      description: 用来判断是哪个数据源出的问题
+      render: json
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志
+      description: Exporter 日志（`LOG_LEVEL=debug` 更有帮助）与相关的 tinyproxy 日志行
+      render: shell
+    validations:
+      required: false
