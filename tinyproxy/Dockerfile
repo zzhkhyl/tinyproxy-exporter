@@ -3,7 +3,7 @@
 # The image intentionally stays on a "root" PID 1: tinyproxy binds the
 # configured port and then drops privileges itself through the `User`/`Group`
 # directives in tinyproxy.conf.
-FROM alpine:3.20
+FROM alpine:3.24
 
 LABEL org.opencontainers.image.title="tinyproxy" \
       org.opencontainers.image.description="Tinyproxy HTTP proxy with StatHost/StatFile enabled for Prometheus scraping" \
