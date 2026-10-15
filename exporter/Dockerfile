@@ -33,7 +33,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
         -ldflags "-s -w -X main.version=${VERSION} -X main.revision=${REVISION}" \
         -o /out/tinyproxy-exporter .
 
-FROM alpine:3.20
+FROM alpine:3.24
 
 # Alpine's CDN is unreachable from some locked down networks; see above.
 ARG APK_MIRROR=""
