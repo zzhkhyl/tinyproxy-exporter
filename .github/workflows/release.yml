@@ -117,7 +117,7 @@ jobs:
 
       # v0.2.0 -> 0.2.0 / 0.2 / 0 / latest，并写入 OCI 标签。
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/tinyproxy-exporter
           tags: |
@@ -168,7 +168,7 @@ jobs:
       # 1.11.2 -> 1.11.2 / 1.11 / 1 / latest。tag 完全由上游版本决定，所以不依赖
       # 本次 ref 是不是 semver 形态的 tag。
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/tinyproxy
           tags: |
