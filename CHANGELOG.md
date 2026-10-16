@@ -24,6 +24,7 @@
 
 - 站点过滤默认关闭（`Filter` / `FilterType` / `FilterDefaultDeny` 在 `tinyproxy.conf` 与 K8s ConfigMap 里均为注释状态）：一个代理镜像的开箱行为不应被硬编码域名清单限制
 - 两个镜像的版本线解耦：`tinyproxy` 镜像的 tag 跟随上游 tinyproxy 版本（构建前从基础镜像解析，并校验镜像内实际装到的版本一致），`tinyproxy-exporter` 镜像的 tag 跟随手动打的 git tag
+- 两个镜像都不再推 `{{major}}.{{minor}}` / `{{major}}` 浮动 tag：`tinyproxy` 只保留完整上游版本（如 `:1.11.3`）与 `:latest`，`tinyproxy-exporter` 只保留完整版本（如 `:0.1.4`）与 `:latest`。前者只是换个下载源的上游二进制，行为完全由上游决定，额外维护一层兼容边界承诺没有意义，反而容易被误读成受控的滚动版本；后者与镜像一一对应，精确 tag 已表达全部信息，`:0.1` 只是个升级补丁时要跟着同步却无信息增量的别名
 - `tinyproxy/Dockerfile` 新增 `TINYPROXY_VERSION` 构建参数与 `/etc/tinyproxy/VERSION`，用于写入版本标签并校验镜像内容
 - 新增 `make upstream-version`，用于查看基础镜像里 tinyproxy 的上游版本
 - 生产镜像来源统一为 `ghcr.io/<owner>/tinyproxy:latest` 与 `ghcr.io/<owner>/tinyproxy-exporter:latest`

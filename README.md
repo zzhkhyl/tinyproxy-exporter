@@ -319,10 +319,10 @@ git push origin v1.0.0
 
 | 镜像 | tag 来源 | 产物示例 |
 | --- | --- | --- |
-| `tinyproxy-exporter` | 你手动打的 git tag | `:1.0.0`、`:1.0`、`:latest` |
-| `tinyproxy` | 基础镜像（Alpine 仓库）里的**上游 tinyproxy 版本** | `:1.11.3`、`:1.11`、`:1`、`:latest` |
+| `tinyproxy-exporter` | 你手动打的 git tag | `:1.0.0`、`:latest` |
+| `tinyproxy` | 基础镜像（Alpine 仓库）里的**上游 tinyproxy 版本** | `:1.11.3`、`:latest` |
 
-exporter 侧刻意不派生 `:1` 这样的 major 浮动 tag：0.x 的兼容边界在 minor，`{{major}}` 会给出一个语义错误的 `:0`。等版本号到 1.0 再补回来。
+两个镜像都只推**精确版本**与 `:latest`，不推 `:1.0` / `:1` 这类浮动 tag。`:latest` 之外想固定版本就直接写完整版本号；浮动别名只是多一个每次升级都要跟着动、却不带来新信息的引用。
 
 tinyproxy 镜像是 `apk add tinyproxy` 装出来的，它装到哪个版本由基础镜像的仓库决定，和本仓库的 tag 没有对应关系，所以 tag 跟随上游。workflow 会在构建前起一个基础镜像把版本问出来，作为 `TINYPROXY_VERSION` 传给 `tinyproxy/Dockerfile`：它既用于打 tag，也用于校验——镜像里实际装到的版本与 tag 不符时直接让构建失败，宁可发不出去，也不发一个标错版本的镜像。
 
