@@ -27,10 +27,17 @@ COPY . .
 ARG VERSION=dev
 ARG REVISION=unknown
 
+# Commit date, not build time: it is stable for a given commit, so rebuilding the
+# same source yields the same binary and the build-arg only invalidates Docker's
+# cache when the commit actually changes. Note that a $(date) evaluated inside the
+# RUN below would NOT work -- the instruction text is unchanged, so a cached layer
+# would be reused and the date would silently stay at the first build's value.
+ARG BUILD_DATE=unknown
+
 # CGO off => a fully static binary, so the runtime stage needs no libc.
 RUN CGO_ENABLED=0 GOOS=linux go build \
         -trimpath \
-        -ldflags "-s -w -X main.version=${VERSION} -X main.revision=${REVISION}" \
+        -ldflags "-s -w -X main.version=${VERSION} -X main.revision=${REVISION} -X main.buildDate=${BUILD_DATE}" \
         -o /out/tinyproxy-exporter .
 
 FROM alpine:3.24

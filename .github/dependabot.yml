@@ -8,20 +8,42 @@ updates:
     groups:
       go-deps:
         patterns: ["*"]
+        # major 单独开 PR；minor/patch 合并成一个，减少噪音。
+        update-types: ["minor", "patch"]
 
   # GitHub Actions：也用于抵消 action 只写 major tag（未 pin SHA）的风险。
+  #
+  # 这里显式放宽上限：open-pull-requests-limit 默认是 5，之前恰好被 5 个 docker/*
+  # action 的 PR 占满，actions/checkout 和 actions/setup-go 落后好几个大版本的升级
+  # PR 因此被静默挤掉，deprecated 的 Node 20 警告就一直挂着。
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # 基础镜像：alpine 的小版本漂移与安全更新。
+  # groups 只在同一 directory 内生效，跨目录合并不了，所以两个目录各配一份。
   - package-ecosystem: docker
     directory: /tinyproxy
     schedule:
       interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      docker-images:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: docker
     directory: /exporter
     schedule:
       interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      docker-images:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
