@@ -9,6 +9,8 @@ MODULE_DIR  := exporter
 IMAGE_TAG   ?= local
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 REVISION    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+# 提交时间，不是构建时间：同一提交反复构建结果一致，且只在提交变化时失效缓存。
+BUILD_DATE  ?= $(shell git log -1 --format=%cI 2>/dev/null || echo unknown)
 TARGET_OS   ?= linux
 TARGET_ARCH ?= amd64
 
@@ -52,7 +54,7 @@ build: ## Compile every package.
 binary-linux: ## Cross compile the static binary used by Dockerfile.slim.
 	cd $(MODULE_DIR) && CGO_ENABLED=0 GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) $(GO) build \
 		-trimpath \
-		-ldflags "-s -w -X main.version=$(VERSION) -X main.revision=$(REVISION)" \
+		-ldflags "-s -w -X main.version=$(VERSION) -X main.revision=$(REVISION) -X main.buildDate=$(BUILD_DATE)" \
 		-o bin/tinyproxy-exporter-$(TARGET_OS)-$(TARGET_ARCH) .
 
 .PHONY: run

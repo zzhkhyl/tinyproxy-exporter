@@ -21,9 +21,9 @@ jobs:
       run:
         working-directory: exporter
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: exporter/go.mod
           cache-dependency-path: exporter/go.sum
@@ -46,7 +46,7 @@ jobs:
   manifests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # docker compose config 只做解析与合并，不启动任何容器。
       - name: validate compose files

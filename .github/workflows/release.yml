@@ -6,9 +6,9 @@
 # 两个镜像的版本互不相干，tag 的来源也就不同：
 #
 #   tinyproxy-exporter  跟随本仓库手动打的 git tag
-#                       v0.2.0 -> :0.2.0, :0.2, :0, :latest
+#                       v0.2.0 -> :0.2.0, :0.2, :latest
 #   tinyproxy           跟随上游 tinyproxy 的版本（即 Alpine 仓库里的包版本）
-#                       1.11.2 -> :1.11.2, :1.11, :1, :latest
+#                       1.11.3 -> :1.11.3, :1.11, :1, :latest
 #
 # tinyproxy 镜像是 `apk add tinyproxy` 装出来的，它的版本由基础镜像的仓库决定，跟本
 # 仓库的 tag 没有任何对应关系；用仓库 tag 去命名它只会误导用户。所以 upstream job 在
@@ -56,7 +56,7 @@ jobs:
       # 形如 1.11.2（已剥掉 Alpine 的包修订号 -r0）。
       tinyproxy: ${{ steps.resolve.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: resolve
         env:
@@ -103,7 +103,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 只需要 linux/amd64 的话，删掉 setup-qemu 这一步以及下面的 platforms 行。
       - uses: docker/setup-qemu-action@v4
@@ -115,7 +115,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # v0.2.0 -> 0.2.0 / 0.2 / 0 / latest，并写入 OCI 标签。
+      # 提交时间，注入二进制的 -X main.buildDate。取提交时间而不是构建时间：同一提交
+      # 反复构建结果一致，且只在提交变化时才让 Docker 的构建缓存失效。
+      - id: builddate
+        run: echo "value=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+
+      # v0.2.0 -> 0.2.0 / 0.2 / latest，并写入 OCI 标签。
+      # 没有 {{major}}：0.x 的兼容边界在 minor，派生出 :0 这种浮动 tag 语义是错的。
+      # 等出 1.0 之后再补回来。
       - id: meta
         uses: docker/metadata-action@v6
         with:
@@ -123,7 +130,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
             # 预发布 tag（如 v0.2.0-rc.1）不覆盖 latest。
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
           labels: |
@@ -137,13 +143,14 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # exporter/Dockerfile 用它注入二进制的 -X main.version / -X main.revision，
-          # 于是 `tinyproxy-exporter -version`、/healthz 与 / 页面报出的版本与镜像
+          # exporter/Dockerfile 用它注入二进制的 -X main.version / -X main.revision /
+          # -X main.buildDate，于是启动日志、/healthz 与 / 页面报出的版本与镜像
           # tag 同源，都是这个手动打的 tag。
           build-args: |
             APK_MIRROR=${{ vars.APK_MIRROR }}
             VERSION=${{ github.ref_name }}
             REVISION=${{ github.sha }}
+            BUILD_DATE=${{ steps.builddate.outputs.value }}
           cache-from: type=gha,scope=exporter
           cache-to: type=gha,mode=max,scope=exporter
 
@@ -154,7 +161,7 @@ jobs:
     needs: upstream
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
@@ -165,8 +172,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1.11.2 -> 1.11.2 / 1.11 / 1 / latest。tag 完全由上游版本决定，所以不依赖
-      # 本次 ref 是不是 semver 形态的 tag。
+      # 1.11.3 -> 1.11.3 / 1.11 / 1 / latest。tag 完全由上游版本决定，所以不依赖
+      # 本次 ref 是不是 semver 形态的 tag。这里的 {{major}} -> 1 是合理的（1.x 的
+      # 兼容边界确实在 major），与 exporter 那边不同。
       - id: meta
         uses: docker/metadata-action@v6
         with:

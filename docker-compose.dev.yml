@@ -58,6 +58,7 @@ services:
         GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
         VERSION: ${TINYPROXY_EXPORTER_VERSION:-dev}
         REVISION: ${TINYPROXY_EXPORTER_REVISION:-unknown}
+        BUILD_DATE: ${TINYPROXY_EXPORTER_BUILD_DATE:-unknown}
     image: tinyproxy-exporter:local
     restart: unless-stopped
     ports:
