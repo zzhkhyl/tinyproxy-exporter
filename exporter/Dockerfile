@@ -10,7 +10,7 @@
 #     --build-arg GOPROXY=https://goproxy.cn,direct \
 #     -t tinyproxy-exporter:local ./exporter
 # See also Dockerfile.slim for a fully offline fallback.
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 # Module proxy used by `go mod download`.
 ARG GOPROXY="https://proxy.golang.org,direct"
