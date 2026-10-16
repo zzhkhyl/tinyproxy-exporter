@@ -20,7 +20,7 @@
 - Alpine 基础镜像与系统包的漏洞由上游跟进，同时通过 [`.github/dependabot.yml`](.github/dependabot.yml) 自动提 PR。
 - 下面这些是**已知的配置风险，不算本项目漏洞**，但欢迎提改进建议：
   - `tinyproxy/tinyproxy.conf` 默认 `Allow 0.0.0.0/0`，配合端口暴露会成为一个开放代理
-  - `tinyproxy/filter` 里是**示例白名单**，启用过滤后只有其中列出的域名可访问
+  - 站点过滤**默认关闭**（`filter` 指令是注释状态），且这只是网络层出口限制，不是访问控制；`tinyproxy/filter` 里是**示例白名单**，启用过滤后只有其中列出的域名可访问
   - 生产 compose 与 K8s 清单默认把端口绑在回环或集群内，但 `TINYPROXY_BIND=0.0.0.0` 会改变这一点
 
 ## 我们的响应

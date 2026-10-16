@@ -22,7 +22,7 @@
 - **兼容三种统计页形态**：自定义 `StatFile` 模板、Alpine 自带的 HTML 表格、以及未配置 `StatFile` 时的硬编码页面。
 - **日志健壮**：自适应 `copytruncate` 与 `create` 两种轮转方式，容忍截断、半行与"Exporter 先于代理启动"的竞态。
 - **自抓取隔离**：Exporter 自己的统计页请求单列为 `tinyproxy_log_stathost_requests_total`，不污染业务请求指标。
-- **站点过滤**：内置白名单模式的 `filter` 与配套文档，被拒请求计入 `tinyproxy_log_denied_total{reason="filter"}`。
+- **站点过滤（默认关闭）**：可选的 `Filter` 白名单与配套文档；默认不启用，避免一个代理镜像的开箱行为被硬编码域名清单限制。被拒请求计入 `tinyproxy_log_denied_total{reason="filter"}`。
 - **开箱可观测**：附 ServiceMonitor、PrometheusRule 告警规则，以及 17 个面板的 Grafana 仪表盘。
 
 ---
@@ -272,7 +272,7 @@ Exporter 必须读代理的日志文件，而 `emptyDir` 与 compose 的命名�
 前者来自统计页，是"已接受的连接数"且包含 Exporter 自身的抓取；后者来自日志，是真正的业务请求数。
 
 **怎么限制能访问哪些站点？**
-用 `Filter` 白名单；它和管客户端来源的 `Allow` 是两回事，见 [docs/filter.md](docs/filter.md)。
+默认不限制。要限制就启用 `Filter` 白名单（默认是注释状态，取消注释即可）；它和管客户端来源的 `Allow` 是两回事。**启用前务必读 [docs/filter.md](docs/filter.md) 里 StatHost 那一条**——白名单漏放行 StatHost 会让健康检查与 exporter 一起失效。
 
 ---
 
@@ -354,7 +354,7 @@ make upstream-version     # 形如 tinyproxy-1.11.2-r0，其中 1.11.2 就是该
 | [`docs/metrics.md`](docs/metrics.md) | 全部指标清单：StatHost / 日志 / Exporter 自身 / 接口流量，含口径说明 |
 | [`docs/integration.md`](docs/integration.md) | Exporter 如何接入 tinyproxy：统计页触发条件、日志级别、文件权限、自抓取隔离 |
 | [`docs/traffic.md`](docs/traffic.md) | 流量统计：为什么拿不到字节数、两条替代路径 |
-| [`docs/filter.md`](docs/filter.md) | 站点过滤：白名单模式怎么配、如何完全关闭过滤、规则格式、挂载方式、生效方式与常见坑 |
+| [`docs/filter.md`](docs/filter.md) | 站点过滤：默认为什么关闭、如何启用白名单、规则格式与 fnmatch 通配语义、挂载方式、生效方式与常见坑 |
 | [`docs/operations.md`](docs/operations.md) | 运维要点：日志轮转、代理开放性、镜像升级 |
 | [`docs/limitations.md`](docs/limitations.md) | 已验证内容与已知限制 |
 
@@ -385,13 +385,13 @@ make upstream-version     # 形如 tinyproxy-1.11.2-r0，其中 1.11.2 就是该
 │   ├── metrics.md              # 指标清单
 │   ├── integration.md          # Exporter 如何接入 tinyproxy
 │   ├── traffic.md              # 流量统计的能力边界
-│   ├── filter.md               # 站点过滤（白名单 / 不启用过滤）
+│   ├── filter.md               # 站点过滤（默认关闭，启用白名单的步骤与坑）
 │   ├── operations.md           # 运维注意事项
 │   └── limitations.md          # 已验证内容与已知限制
 ├── tinyproxy/
 │   ├── Dockerfile              # alpine + apk add tinyproxy
-│   ├── tinyproxy.conf          # User/Port/Listen/StatHost/StatFile/LogFile/LogLevel/Allow/Filter
-│   ├── filter                  # 过滤规则（白名单），见 docs/filter.md
+│   ├── tinyproxy.conf          # User/Port/Listen/StatHost/StatFile/LogFile/LogLevel/Allow（Filter 默认注释）
+│   ├── filter                  # 过滤规则（白名单），默认不生效，见 docs/filter.md
 │   ├── statpage.txt            # 机器可读的 StatFile 模板
 │   └── entrypoint.sh           # 日志卷权限准备 + exec tinyproxy
 ├── exporter/

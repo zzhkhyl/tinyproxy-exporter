@@ -1,10 +1,23 @@
 # tinyproxy 过滤规则（白名单）：只有此处列出的域名可以通过代理访问。
 # 规则语法与部署方式见 docs/filter.md。
 #
-# 下面只是示例，请替换成你实际需要放行的域名。
+# 默认不启用过滤：tinyproxy.conf 里的 Filter 三行是注释状态，这个文件放着不用也
+# 没关系。要启用就取消那三行的注释。
 
+# StatHost 必须放行：容器健康检查与 exporter 请求的都是 http://tinyproxy.stats/，
+# 而这个请求同样会经过过滤器。漏掉它会让全部探针失败（K8s 下 Pod 永不 Ready、
+# Service 没有 Endpoints），exporter 的统计通道也会 403。别删这一行。
+tinyproxy.stats
+
+# 下面只是示例，请替换成你实际需要放行的域名。
+#
+# 注意 fnmatch 的 `*.example.com` 不匹配裸域名 `example.com`（`*` 至少要吃掉一个
+# 字符加点），想同时覆盖主站和子域要写两行。
 *.github.com
+github.com
 *.githubusercontent.com
 *.pypi.org
+pypi.org
 files.pythonhosted.org
 *.golang.org
+golang.org
