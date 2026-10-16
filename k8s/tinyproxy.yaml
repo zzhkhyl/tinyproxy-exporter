@@ -60,20 +60,35 @@ data:
     ## 不在 Via 头里泄露 Pod 主机名。
     ViaProxyName "tinyproxy"
 
-    ## 过滤（白名单）：只有规则文件里列出的域名能通过代理访问。
-    ## 删掉 Filter 行即完全不启用过滤。详见 docs/filter.md。
-    Filter "/etc/tinyproxy/filter"
-    FilterType fnmatch
-    FilterDefaultDeny Yes
+    ## 过滤（白名单）：默认关闭，需要时取消下面三行注释。
+    ##
+    ## 注意 StatHost 页面同样会经过过滤器：白名单里漏掉 tinyproxy.stats 会让
+    ## 容器探针全部失败（Pod 永不 Ready、Service 没有 Endpoints，代理直接不可
+    ## 用），exporter 的统计通道也会 403。规则文件里已放行它，别删。
+    ## 详见 docs/filter.md。
+    # Filter "/etc/tinyproxy/filter"
+    # FilterType fnmatch
+    # FilterDefaultDeny Yes
 
   ## 过滤规则（白名单）。与 tinyproxy/filter 保持一致。
+  ## 默认未启用；启用后只有此处列出的域名能通过代理访问。
   filter: |
-    # 只有此处列出的域名可以通过代理访问。见 docs/filter.md。
+    # 见 docs/filter.md。
+    #
+    # StatHost 必须放行：容器健康检查与 exporter 请求的都是
+    # http://tinyproxy.stats/，而这个请求同样会经过过滤器。
+    tinyproxy.stats
+
+    # 示例，请替换成实际需要放行的域名。
+    # 注意 fnmatch 的 `*.example.com` 不匹配裸域名 `example.com`，两者都要写。
     *.github.com
+    github.com
     *.githubusercontent.com
     *.pypi.org
+    pypi.org
     files.pythonhosted.org
     *.golang.org
+    golang.org
 ---
 apiVersion: apps/v1
 kind: Deployment

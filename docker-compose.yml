@@ -34,7 +34,8 @@ services:
       # 用外部文件覆盖镜像内的默认配置。那份默认配置是 Allow 0.0.0.0/0，生产务必
       # 先收紧再上：把 TINYPROXY_CONF 指向自己的配置，或直接编辑下面这个文件。
       - ${TINYPROXY_CONF:-./tinyproxy/tinyproxy.conf}:/etc/tinyproxy/tinyproxy.conf:ro
-      # 过滤规则（白名单），见 docs/filter.md。
+      # 过滤规则（白名单）。默认未启用（tinyproxy.conf 里 Filter 三行是注释），
+      # 启用方法与坑见 docs/filter.md。
       - ${TINYPROXY_FILTER:-./tinyproxy/filter}:/etc/tinyproxy/filter:ro
     healthcheck:
       # 同时验证进程存活与 StatHost 统计页可用，后者正是 exporter 依赖的通道。

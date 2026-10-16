@@ -35,6 +35,7 @@ services:
       - ./data/logs:/var/log/tinyproxy
       # 配置也绑定挂载：改完 tinyproxy.conf 或 filter 重启容器即可生效，不必重建镜像。
       - ./tinyproxy/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
+      # 过滤规则（白名单）。默认未启用，见 docs/filter.md。
       - ./tinyproxy/filter:/etc/tinyproxy/filter:ro
     healthcheck:
       test:
